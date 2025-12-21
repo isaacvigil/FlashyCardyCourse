@@ -1,0 +1,301 @@
+---
+alwaysApply: true
+---
+
+# Data Retrieval and Mutation Patterns
+
+This project follows strict patterns for data retrieval and mutations to ensure type safety, security, and consistency.
+
+## Data Retrieval
+
+**All data retrieval must be done via Server Components.**
+
+### ✅ CORRECT: Server Component Data Fetching
+
+```typescript
+// app/decks/page.tsx
+import { auth } from "@clerk/nextjs/server";
+import { db } from "@/db";
+import { decksTable } from "@/db/schema";
+import { eq } from "drizzle-orm";
+
+export default async function DecksPage() {
+  const { userId } = await auth();
+  
+  if (!userId) {
+    return <div>Please sign in</div>;
+  }
+  
+  // Fetch data directly in the server component
+  const decks = await db
+    .select()
+    .from(decksTable)
+    .where(eq(decksTable.userId, userId));
+  
+  return (
+    <div>
+      {decks.map(deck => (
+        <DeckCard key={deck.id} deck={deck} />
+      ))}
+    </div>
+  );
+}
+```
+
+### ❌ WRONG: Client-Side Data Fetching
+
+```typescript
+// ❌ Don't use useEffect or client-side fetching
+"use client";
+
+export default function DecksPage() {
+  const [decks, setDecks] = useState([]);
+  
+  useEffect(() => {
+    fetch("/api/decks").then(/* ... */); // WRONG
+  }, []);
+}
+```
+
+### ❌ WRONG: API Routes for Simple Data Fetching
+
+```typescript
+// ❌ Don't create API routes just for data fetching
+// app/api/decks/route.ts
+export async function GET() {
+  // This is unnecessary - use server components instead
+}
+```
+
+## Data Mutations
+
+**All database mutations (INSERT, UPDATE, DELETE) must be done via Server Actions.**
+
+### Server Action Requirements
+
+1. **Use Zod for validation**: All input data must be validated using Zod schemas
+2. **Use TypeScript types**: Define proper TypeScript types for parameters (DO NOT use FormData as the type)
+3. **Include "use server"**: All server actions must have the `"use server"` directive
+4. **Return typed responses**: Return typed objects indicating success/failure
+
+### ✅ CORRECT: Server Action with Zod Validation
+
+```typescript
+// app/actions/deck-actions.ts
+"use server";
+
+import { z } from "zod";
+import { auth } from "@clerk/nextjs/server";
+import { db } from "@/db";
+import { decksTable } from "@/db/schema";
+import { eq, and } from "drizzle-orm";
+
+// Define Zod schema for validation
+const createDeckSchema = z.object({
+  title: z.string().min(1, "Title is required").max(100),
+  description: z.string().max(500).optional(),
+});
+
+// Define TypeScript type from Zod schema
+type CreateDeckInput = z.infer<typeof createDeckSchema>;
+
+// Server action with proper typing and validation
+export async function createDeck(input: CreateDeckInput) {
+  // 1. Authenticate
+  const { userId } = await auth();
+  if (!userId) {
+    return { success: false, error: "Unauthorized" };
+  }
+  
+  // 2. Validate input with Zod
+  const validation = createDeckSchema.safeParse(input);
+  if (!validation.success) {
+    return { 
+      success: false, 
+      error: validation.error.errors[0].message 
+    };
+  }
+  
+  // 3. Perform database mutation
+  try {
+    const [newDeck] = await db
+      .insert(decksTable)
+      .values({
+        userId,
+        title: validation.data.title,
+        description: validation.data.description,
+      })
+      .returning();
+    
+    return { success: true, data: newDeck };
+  } catch (error) {
+    return { success: false, error: "Failed to create deck" };
+  }
+}
+
+// Update example
+const updateDeckSchema = z.object({
+  id: z.number(),
+  title: z.string().min(1).max(100).optional(),
+  description: z.string().max(500).optional(),
+});
+
+type UpdateDeckInput = z.infer<typeof updateDeckSchema>;
+
+export async function updateDeck(input: UpdateDeckInput) {
+  const { userId } = await auth();
+  if (!userId) {
+    return { success: false, error: "Unauthorized" };
+  }
+  
+  const validation = updateDeckSchema.safeParse(input);
+  if (!validation.success) {
+    return { success: false, error: validation.error.errors[0].message };
+  }
+  
+  const { id, ...updates } = validation.data;
+  
+  try {
+    await db
+      .update(decksTable)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(
+        and(
+          eq(decksTable.id, id),
+          eq(decksTable.userId, userId)
+        )
+      );
+    
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: "Failed to update deck" };
+  }
+}
+
+// Delete example
+const deleteDeckSchema = z.object({
+  id: z.number(),
+});
+
+type DeleteDeckInput = z.infer<typeof deleteDeckSchema>;
+
+export async function deleteDeck(input: DeleteDeckInput) {
+  const { userId } = await auth();
+  if (!userId) {
+    return { success: false, error: "Unauthorized" };
+  }
+  
+  const validation = deleteDeckSchema.safeParse(input);
+  if (!validation.success) {
+    return { success: false, error: validation.error.errors[0].message };
+  }
+  
+  try {
+    await db
+      .delete(decksTable)
+      .where(
+        and(
+          eq(decksTable.id, validation.data.id),
+          eq(decksTable.userId, userId)
+        )
+      );
+    
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: "Failed to delete deck" };
+  }
+}
+```
+
+### ✅ CORRECT: Using Server Actions in Client Components
+
+```typescript
+"use client";
+
+import { createDeck } from "@/app/actions/deck-actions";
+import { useState } from "react";
+
+export function CreateDeckForm() {
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    
+    // Call server action with typed object
+    const result = await createDeck({ title, description });
+    
+    if (result.success) {
+      // Handle success
+    } else {
+      // Handle error
+      console.error(result.error);
+    }
+  }
+  
+  return (
+    <form onSubmit={handleSubmit}>
+      <input value={title} onChange={(e) => setTitle(e.target.value)} />
+      <textarea value={description} onChange={(e) => setDescription(e.target.value)} />
+      <button type="submit">Create Deck</button>
+    </form>
+  );
+}
+```
+
+### ❌ WRONG: Using FormData Type
+
+```typescript
+// ❌ Don't use FormData as the parameter type
+"use server";
+
+export async function createDeck(formData: FormData) {
+  // WRONG - Use typed objects instead
+  const title = formData.get("title");
+}
+```
+
+### ❌ WRONG: No Validation
+
+```typescript
+// ❌ Don't skip validation
+"use server";
+
+export async function createDeck(input: { title: string }) {
+  // WRONG - Must validate with Zod first
+  await db.insert(decksTable).values({ title: input.title });
+}
+```
+
+### ❌ WRONG: API Routes for Mutations
+
+```typescript
+// ❌ Don't use API routes for mutations
+// app/api/decks/route.ts
+export async function POST(request: Request) {
+  // WRONG - Use server actions instead
+}
+```
+
+## Summary Checklist
+
+### Data Retrieval
+- [ ] Using server components (not client-side fetching)
+- [ ] Not creating unnecessary API routes for simple data fetching
+- [ ] Properly authenticating with Clerk's `auth()`
+- [ ] Filtering by `userId` for user-specific data
+
+### Data Mutations
+- [ ] Using server actions with `"use server"` directive
+- [ ] Defining Zod schemas for validation
+- [ ] Using TypeScript types (NOT FormData)
+- [ ] Validating all input with Zod's `safeParse()`
+- [ ] Returning typed response objects with success/error
+- [ ] Authenticating with Clerk's `auth()`
+- [ ] Verifying ownership before mutations
+
+## Additional Resources
+
+- Zod Documentation: https://zod.dev
+- Next.js Server Actions: https://nextjs.org/docs/app/building-your-application/data-fetching/server-actions-and-mutations
+- Server Components: https://nextjs.org/docs/app/building-your-application/rendering/server-components

@@ -1,0 +1,192 @@
+---
+alwaysApply: true
+---
+
+# Clerk Authentication & Authorization
+
+All authentication in this project is handled by **Clerk**. It is **critical** that users can **only access their own data** and cannot access any data belonging to other users.
+
+## Clerk Setup
+
+- **Middleware**: [middleware.ts](mdc:src/middleware.ts) configures Clerk middleware for route protection
+- **Provider**: [layout.tsx](mdc:src/app/layout.tsx) wraps the app with `ClerkProvider`
+- **Schema**: [schema.ts](mdc:src/db/schema.ts) stores Clerk's `userId` in the `decksTable`
+
+## Getting the Current User
+
+### Server Components & Server Actions
+
+```typescript
+import { auth } from "@clerk/nextjs/server";
+
+export default async function MyServerComponent() {
+  const { userId } = await auth();
+  
+  if (!userId) {
+    // User is not authenticated - redirect or show sign-in
+    return <div>Please sign in</div>;
+  }
+  
+  // Use userId for database queries
+  const userDecks = await db
+    .select()
+    .from(decksTable)
+    .where(eq(decksTable.userId, userId));
+}
+```
+
+### API Routes
+
+```typescript
+import { auth } from "@clerk/nextjs/server";
+
+export async function GET() {
+  const { userId } = await auth();
+  
+  if (!userId) {
+    return new Response("Unauthorized", { status: 401 });
+  }
+  
+  // Use userId for database queries
+}
+```
+
+## Data Access Control Rules
+
+### ✅ ALWAYS Follow These Patterns
+
+1. **Deck Operations**: Always filter by `userId`
+
+```typescript
+// ✅ CORRECT: Query user's own decks
+const userDecks = await db
+  .select()
+  .from(decksTable)
+  .where(eq(decksTable.userId, userId));
+
+// ✅ CORRECT: Get a specific deck (verify ownership)
+const [deck] = await db
+  .select()
+  .from(decksTable)
+  .where(
+    and(
+      eq(decksTable.id, deckId),
+      eq(decksTable.userId, userId)
+    )
+  );
+
+if (!deck) {
+  return new Response("Deck not found or unauthorized", { status: 404 });
+}
+```
+
+2. **Card Operations**: Always verify deck ownership first
+
+```typescript
+// ✅ CORRECT: Verify deck ownership before accessing cards
+const [deck] = await db
+  .select()
+  .from(decksTable)
+  .where(
+    and(
+      eq(decksTable.id, deckId),
+      eq(decksTable.userId, userId)
+    )
+  );
+
+if (!deck) {
+  return new Response("Unauthorized", { status: 403 });
+}
+
+// Now safe to query cards for this deck
+const cards = await db
+  .select()
+  .from(cardsTable)
+  .where(eq(cardsTable.id, deckId));
+```
+
+3. **Insert Operations**: Always include `userId`
+
+```typescript
+// ✅ CORRECT: Create deck with userId
+const [newDeck] = await db
+  .insert(decksTable)
+  .values({
+    userId: userId, // REQUIRED
+    title: "My Deck",
+    description: "Description"
+  })
+  .returning();
+```
+
+4. **Update/Delete Operations**: Always verify ownership
+
+```typescript
+// ✅ CORRECT: Update with userId check
+const result = await db
+  .update(decksTable)
+  .set({ title: "Updated Title", updatedAt: new Date() })
+  .where(
+    and(
+      eq(decksTable.id, deckId),
+      eq(decksTable.userId, userId)
+    )
+  );
+
+// ✅ CORRECT: Delete with userId check
+await db
+  .delete(decksTable)
+  .where(
+    and(
+      eq(decksTable.id, deckId),
+      eq(decksTable.userId, userId)
+    )
+  );
+```
+
+### ❌ NEVER Do These
+
+```typescript
+// ❌ WRONG: Query without userId filter
+const allDecks = await db.select().from(decksTable);
+
+// ❌ WRONG: Query deck without verifying userId
+const [deck] = await db
+  .select()
+  .from(decksTable)
+  .where(eq(decksTable.id, deckId));
+
+// ❌ WRONG: Access cards without verifying deck ownership
+const cards = await db
+  .select()
+  .from(cardsTable)
+  .where(eq(cardsTable.deckId, deckId));
+
+// ❌ WRONG: Update without userId check
+await db
+  .update(decksTable)
+  .set({ title: "New Title" })
+  .where(eq(decksTable.id, deckId));
+```
+
+## Security Checklist
+
+Before implementing any database operation, verify:
+
+- [ ] Is the user authenticated? (`userId` exists)
+- [ ] Are we filtering by `userId` for deck operations?
+- [ ] Are we verifying deck ownership before card operations?
+- [ ] Are we returning appropriate error codes (401/403/404)?
+- [ ] Are we preventing information leakage in error messages?
+
+## Error Responses
+
+- **401 Unauthorized**: User is not authenticated
+- **403 Forbidden**: User is authenticated but doesn't have access
+- **404 Not Found**: Resource doesn't exist or user doesn't have access (prefer this to avoid information leakage)
+
+## Additional Resources
+
+- Clerk Documentation: https://clerk.com/docs
+- Import `auth()` from `@clerk/nextjs/server` for server-side authentication
+- Import Clerk components from `@clerk/nextjs` for client-side UI

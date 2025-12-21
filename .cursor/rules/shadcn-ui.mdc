@@ -1,0 +1,54 @@
+---
+alwaysApply: true
+---
+# shadcn UI Components
+
+This project uses **shadcn UI** for all UI elements.
+
+## Configuration
+
+shadcn UI is configured in [components.json](mdc:components.json) with the following settings:
+- Style: New York
+- Framework: React Server Components (RSC)
+- Base color: Neutral
+- Icon library: Lucide
+- CSS variables enabled
+
+## Installation
+
+If shadcn UI is not initialized in the project, use:
+
+```bash
+npx shadcn@latest init
+```
+
+## Adding Components
+
+If a particular component is not installed, use the following command:
+
+```bash
+npx shadcn@latest add <component-name>
+``` 
+
+Example - to install the button component:
+
+```bash
+npx shadcn@latest add button
+```
+
+## Component Aliases
+
+Components are organized with the following path aliases:
+- `@/components` - General components
+- `@/components/ui` - shadcn UI components
+- `@/lib/utils` - Utility functions including cn() for class merging
+- `@/hooks` - Custom React hooks
+
+## Guidelines
+
+1. **Always use shadcn UI components** for UI elements instead of building from scratch
+2. Components are server components by default (RSC)
+3. Use the `cn()` utility from [utils.ts](mdc:src/lib/utils.ts) for conditional class names
+4. Follow the New York style variant conventions
+5. Leverage Lucide icons for iconography
+
