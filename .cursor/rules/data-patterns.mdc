@@ -1,7 +1,6 @@
 ---
 alwaysApply: true
 ---
-
 # Data Retrieval and Mutation Patterns
 
 This project follows strict patterns for data retrieval and mutations to ensure type safety, security, and consistency.
