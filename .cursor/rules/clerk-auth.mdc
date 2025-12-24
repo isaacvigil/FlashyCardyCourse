@@ -1,7 +1,6 @@
 ---
 alwaysApply: true
 ---
-
 # Clerk Authentication & Authorization
 
 All authentication in this project is handled by **Clerk**. It is **critical** that users can **only access their own data** and cannot access any data belonging to other users.
@@ -18,13 +17,14 @@ All authentication in this project is handled by **Clerk**. It is **critical** t
 
 ```typescript
 import { auth } from "@clerk/nextjs/server";
+import { redirect } from "next/navigation";
 
 export default async function MyServerComponent() {
   const { userId } = await auth();
   
   if (!userId) {
-    // User is not authenticated - redirect or show sign-in
-    return <div>Please sign in</div>;
+    // User is not authenticated - redirect to homepage where sign-in/sign-up buttons are
+    redirect("/");
   }
   
   // Use userId for database queries
