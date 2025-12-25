@@ -139,6 +139,10 @@ export async function updateCard(data: {
     .where(eq(cardsTable.id, id))
     .returning();
   
+  if (!updatedCard) {
+    throw new Error("Failed to update card");
+  }
+  
   return updatedCard;
 }
 

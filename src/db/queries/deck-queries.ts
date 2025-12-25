@@ -1,15 +1,26 @@
 import { db } from "@/db";
-import { decksTable } from "@/db/schema";
-import { eq, and, desc } from "drizzle-orm";
+import { decksTable, cardsTable } from "@/db/schema";
+import { eq, and, desc, count, sql } from "drizzle-orm";
 
 /**
  * Get all decks for a user, ordered by most recently updated
+ * Includes card count for each deck
  */
 export async function getUserDecks(userId: string) {
   return await db
-    .select()
+    .select({
+      id: decksTable.id,
+      userId: decksTable.userId,
+      title: decksTable.title,
+      description: decksTable.description,
+      createdAt: decksTable.createdAt,
+      updatedAt: decksTable.updatedAt,
+      cardCount: sql<number>`cast(count(${cardsTable.id}) as integer)`,
+    })
     .from(decksTable)
+    .leftJoin(cardsTable, eq(decksTable.id, cardsTable.deckId))
     .where(eq(decksTable.userId, userId))
+    .groupBy(decksTable.id)
     .orderBy(desc(decksTable.updatedAt));
 }
 
@@ -96,4 +107,3 @@ export async function deleteDeck(deckId: number, userId: string) {
       )
     );
 }
-
