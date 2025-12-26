@@ -2,9 +2,12 @@ import { auth } from "@clerk/nextjs/server";
 import { redirect, notFound } from "next/navigation";
 import { getDeckById } from "@/db/queries/deck-queries";
 import { getCardsByDeckId } from "@/db/queries/card-queries";
+import { checkFeatureAccess } from "@/lib/feature-access";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { AIGenerateButton } from "@/components/ai-generate-button";
+import { EditDeckDialog } from "./edit-deck-dialog";
 import Link from "next/link";
 import { ArrowLeft, Plus } from "lucide-react";
 
@@ -21,6 +24,10 @@ export default async function DeckPage({ params }: DeckPageProps) {
     // User is not authenticated - redirect to homepage
     redirect("/");
   }
+
+  // Check if user has AI generation feature using robust helper
+  const aiFeatureCheck = await checkFeatureAccess("ai_flashcard_generation");
+  const hasAIFeature = aiFeatureCheck.hasAccess;
 
   const { id } = await params;
   const deckId = parseInt(id);
@@ -78,19 +85,27 @@ export default async function DeckPage({ params }: DeckPageProps) {
           </div>
 
           <div className="flex gap-2">
-            <Button asChild>
-              <Link href={`/decks/${deckId}/cards/new`}>
-                <Plus className="mr-2 h-4 w-4" />
-                Add Card
-              </Link>
-            </Button>
+            <EditDeckDialog deck={deck} />
+            <AIGenerateButton 
+              deckId={deckId} 
+              hasAIFeature={hasAIFeature} 
+              hasDescription={!!deck.description && deck.description.trim() !== ''} 
+            />
           </div>
         </div>
       </div>
 
       {/* Cards Section */}
       <div className="space-y-4">
-        <h2 className="text-2xl font-semibold">Flashcards</h2>
+        <div className="flex items-center justify-between">
+          <h2 className="text-2xl font-semibold">Flashcards</h2>
+          <Button asChild>
+            <Link href={`/decks/${deckId}/cards/new`}>
+              <Plus className="mr-2 h-4 w-4" />
+              Add Card
+            </Link>
+          </Button>
+        </div>
 
         {cards.length === 0 ? (
           <Card>

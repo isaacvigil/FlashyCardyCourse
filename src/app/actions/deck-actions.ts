@@ -3,6 +3,7 @@
 import { z } from "zod";
 import { auth } from "@clerk/nextjs/server";
 import { revalidatePath } from "next/cache";
+import { checkFeatureAccess } from "@/lib/feature-access";
 import { 
   createDeck as createDeckQuery, 
   updateDeck as updateDeckQuery,
@@ -20,7 +21,7 @@ type CreateDeckInput = z.infer<typeof createDeckSchema>;
 
 export async function createDeck(input: CreateDeckInput) {
   // 1. Authenticate
-  const { userId, has } = await auth();
+  const { userId } = await auth();
   if (!userId) {
     return { success: false, error: "Unauthorized" };
   }
@@ -34,8 +35,9 @@ export async function createDeck(input: CreateDeckInput) {
     };
   }
   
-  // 3. Check if user has unlimited decks feature
-  const hasUnlimitedDecks = has({ feature: "unlimited_decks" });
+  // 3. Check if user has unlimited decks feature using robust helper
+  const unlimitedDecksCheck = await checkFeatureAccess("unlimited_decks");
+  const hasUnlimitedDecks = unlimitedDecksCheck.hasAccess;
   
   // If not, check if they've hit the 3 deck limit
   if (!hasUnlimitedDecks) {

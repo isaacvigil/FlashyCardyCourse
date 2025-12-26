@@ -1,13 +1,14 @@
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { getUserDecks } from "@/db/queries/deck-queries";
+import { checkFeatureAccess, getUserPlan } from "@/lib/feature-access";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
 
 export default async function DashboardPage() {
-  const { userId, has } = await auth();
+  const { userId } = await auth();
 
   if (!userId) {
     // User is not authenticated - redirect to homepage where sign-in/sign-up buttons are
@@ -17,11 +18,13 @@ export default async function DashboardPage() {
   // Fetch user's decks using query helper
   const decks = await getUserDecks(userId);
 
-  // Check if user has unlimited decks feature (Pro users)
-  const hasUnlimitedDecks = has({ feature: "unlimited_decks" });
+  // Check if user has unlimited decks feature (Pro users) using robust helper
+  const unlimitedDecksCheck = await checkFeatureAccess("unlimited_decks");
+  const hasUnlimitedDecks = unlimitedDecksCheck.hasAccess;
   
   // Check if user is on Pro plan
-  const isProUser = has({ plan: "pro" });
+  const userPlan = await getUserPlan();
+  const isProUser = userPlan === "pro";
   
   // Free users are limited to 3 decks
   const canCreateMoreDecks = hasUnlimitedDecks || decks.length < 3;

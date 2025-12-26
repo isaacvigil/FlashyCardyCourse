@@ -188,3 +188,41 @@ export async function getCardCount(deckId: number, userId: string) {
   return cards.length;
 }
 
+/**
+ * Create multiple cards in bulk (with ownership check)
+ */
+export async function createCardsBulk(data: {
+  deckId: number;
+  userId: string;
+  cards: Array<{ front: string; back: string }>;
+}) {
+  // Verify deck ownership
+  const [deck] = await db
+    .select()
+    .from(decksTable)
+    .where(
+      and(
+        eq(decksTable.id, data.deckId),
+        eq(decksTable.userId, data.userId)
+      )
+    );
+  
+  if (!deck) {
+    throw new Error("Deck not found or unauthorized");
+  }
+  
+  // Insert all cards
+  const cardsToInsert = data.cards.map(card => ({
+    deckId: data.deckId,
+    front: card.front,
+    back: card.back,
+  }));
+  
+  const newCards = await db
+    .insert(cardsTable)
+    .values(cardsToInsert)
+    .returning();
+  
+  return newCards;
+}
+
